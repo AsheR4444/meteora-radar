@@ -14,10 +14,10 @@ bot.start((ctx) => {
     "🔍 Welcome to MeteoraRadar! \n",
     "I help you find the most efficient Meteora pools for any token. \n",
     "How to use: \n",
-    "1. Send me a Solana token address \n",
-    "2. I'll analyze all pools from app.meteora.ag and edge.meteora.ag \n",
-    "3. You'll get the top 3 pools ranked by fees/liquidity ratio \n",
-    "Try it now by sending a token address! 🚀 \n",
+    "1. Send me a Solana token address",
+    "2. I'll analyze all pools from app.meteora.ag and edge.meteora.ag",
+    "3. You'll get the top 3 pools ranked by fees/liquidity ratio",
+    "Try it now by sending a token address! 🚀",
   ].join("\n")
 
   return ctx.reply(message)
