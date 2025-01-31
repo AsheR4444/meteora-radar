@@ -1,9 +1,10 @@
+import Big from "big.js"
+import numeral from "numeral"
 import axios from "axios"
 import { Context } from "telegraf"
 import { Message, Update } from "telegraf/typings/core/types/typegram"
 
-import { MeteoraResponse } from "./types"
-import Big from "big.js"
+import { MeteoraResponse, Pair } from "./types"
 
 const METEORA_URL_PATTERNS = {
   app: {
@@ -28,6 +29,8 @@ type MessageContext = Context<Update> & {
   message: Message.TextMessage
 }
 
+const minLiquidity = new Big(1000)
+
 const processPools = async (ctx: MessageContext, tokenAddress: string) => {
   const meteoraUrl = `all_by_groups?page=0&limit=100&unknown=true&search_term=${tokenAddress}&sort_key=volume&order_by=desc`
 
@@ -39,11 +42,14 @@ const processPools = async (ctx: MessageContext, tokenAddress: string) => {
 
     const allPairs = [...pairsWithSolMain, ...pairsWithSolEdge]
 
+    // Create a Map to store unique pairs by address
+    const uniquePairsMap = new Map()
+
     // Get all pairs from SOL groups and calculate their coefficients
-    const pairsWithCoefficients = allPairs
+    allPairs
       .flatMap((group) => group.pairs)
       .filter((pair) => Number(pair.liquidity) > 0 && pair.fees_24h > 0)
-      .map((pair) => {
+      .forEach((pair) => {
         const liquidity = new Big(pair.liquidity)
         const fees = new Big(pair.fees_24h)
         // Determine if the pair is from edge or app based on which group it was found in
@@ -53,13 +59,22 @@ const processPools = async (ctx: MessageContext, tokenAddress: string) => {
           ? "edge"
           : "app"
 
-        return {
-          pair,
-          coefficient: fees.div(liquidity).toNumber(),
-          source,
+        const coefficient = fees.div(liquidity).toNumber()
+
+        if (!isNaN(coefficient) && isFinite(coefficient)) {
+          // Only store the pair if it has a better coefficient or hasn't been seen before
+          if (!uniquePairsMap.has(pair.address) || uniquePairsMap.get(pair.address).coefficient < coefficient) {
+            uniquePairsMap.set(pair.address, {
+              pair,
+              coefficient,
+              source,
+            })
+          }
         }
       })
-      .filter((item) => !isNaN(item.coefficient) && isFinite(item.coefficient))
+
+    const pairsWithCoefficients = Array.from(uniquePairsMap.values())
+      .filter((item) => new Big(item.pair.liquidity).gte(minLiquidity))
       .sort((a, b) => b.coefficient - a.coefficient)
       .slice(0, 3)
 
@@ -68,12 +83,13 @@ const processPools = async (ctx: MessageContext, tokenAddress: string) => {
     }
 
     const message = pairsWithCoefficients
-      .map((item, index) => {
+      .map((item: { source: MeteoraSource; pair: Pair; coefficient: number }, index) => {
         const domain = METEORA_URL_PATTERNS[item.source].domain
         return (
           `${index + 1}. ${item.pair.name}\n` +
-          `💧 Liquidity: ${item.pair.liquidity}\n` +
-          `💰 24h Fees: ${item.pair.fees_24h}\n` +
+          `💧 Liquidity: ${numeral(item.pair.liquidity).format("$0,0.00")}\n` +
+          `💰 24h Fees: ${numeral(item.pair.fees_24h).format("$0,0.00")}\n` +
+          `🔢 Bin step: ${item.pair.bin_step}\n` +
           `📊 Coefficient: ${item.coefficient.toFixed(2)}\n` +
           `🔗 Address: ${`<a href="https://${domain}/dlmm/${item.pair.address}">${domain}/dlmm/...${item.pair.address.slice(0, 8)}</a>`}\n`
         )

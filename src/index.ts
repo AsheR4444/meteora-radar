@@ -27,6 +27,9 @@ bot.hears("/info", (ctx) => ctx.reply("Made by @degencoding"))
 
 bot.on(message("text"), async (ctx) => {
   const text = ctx.message.text
+  
+  // Skip if text is a URL
+  if (text.startsWith('http://') || text.startsWith('https://')) return
 
   if (!isSolanaTokenAddress(text)) return
 
